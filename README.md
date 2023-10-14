@@ -1,4 +1,4 @@
-# [DeNotes](https://denotes.vercel.app/)
+# [LUV Note](https://note.luvnft.com)
 
 A fully decentralised note-taking app powered by the [Interplanetary File System](https://ipfs.io) and the implementation done by [ThirdWeb](https://portal.thirdweb.com/storage).
 
@@ -19,7 +19,7 @@ For a more clear picture of IPFS and content-based addressing, please go through
 
 ## So where are your CIDs stored in this app?
 
-In the cookies of your browser. Only DeNotes will be able to access these cookies, meaning they cannot be seen by any other website. Your notes data persists through the sessions using cookies so it doesn't just disappear when you close the app.
+In the cookies of your browser. Only LUV Note will be able to access these cookies, meaning they cannot be seen by any other website. Your notes data persists through the sessions using cookies so it doesn't just disappear when you close the app.
 
 ## Won't the CIDs take up too much space in the cookies?
 

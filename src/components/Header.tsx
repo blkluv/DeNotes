@@ -15,7 +15,7 @@ function Header({ items = <></> }: HeaderPropsType) {
         className="container mx-auto py-2 px-5 sm:px-11 
       flex items-center justify-between"
       >
-        <h1 className="text-4xl outline-none select-none">DeNotes</h1>
+        <h1 className="text-4xl outline-none select-none">💌 LUV NOTE</h1>
         <div className="flex justify-center items-center gap-1 sm:gap-3">
           {items}
           <ThemeButton />

@@ -6,9 +6,9 @@ function Background() {
               bg-transparent text-black dark:text-white
               opacity-10 select-none z-0"
     >
-      <h1 className="text-3xl md:text-5xl">DeNotes</h1>
+      <h1 className="text-3xl md:text-5xl">💌 LUV NOTE</h1>
       <p className="text-md md:text-xl">
-        A fully decentralised note-taking app
+        A fully decentralised LUV NFT note-taking app
       </p>
     </div>
   );
