@@ -7,16 +7,13 @@ type HeaderPropsType = {
 function Header({ items = <></> }: HeaderPropsType) {
   return (
     <div
-      className="transition-all 
-      bg-light-primary text-dark-primary dark:bg-dark-primary dark:text-light-primary
-      fixed top-0 left-0 right-0 z-10"
+      className="fixed top-0 left-0 right-0 z-10 transition-all bg-light-primary text-dark-primary dark:bg-dark-primary dark:text-light-primary"
     >
       <div
-        className="container mx-auto py-2 px-5 sm:px-11 
-      flex items-center justify-between"
+        className="container flex items-center justify-between px-5 py-2 mx-auto sm:px-11"
       >
-        <h1 className="text-4xl outline-none select-none">💌 LUV NOTE</h1>
-        <div className="flex justify-center items-center gap-1 sm:gap-3">
+        <h1 className="text-4xl outline-none select-none">📘 NoteVisor</h1>
+        <div className="flex items-center justify-center gap-1 sm:gap-3">
           {items}
           <ThemeButton />
         </div>
