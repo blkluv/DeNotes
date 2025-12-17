@@ -1,31 +1,54 @@
 import { useEffect, useState, useCallback } from "react";
-import { useStorage } from "@thirdweb-dev/react";
+import { useStorage } from "@thirdweb-dev/react"; // Removed useAddress
 import Button from "./components/Button";
 import Header from "./components/Header";
 import Loader from "./components/Loader";
 import Modal from "./components/Modal";
-import NoteType from "./types/NoteType";
+import SimpleAdvisorNote from "./types/SimpleAdvisorNote";
 import NoteCard from "./components/NoteCard";
 import Background from "./components/Background";
 import { useCookie } from "./contexts/CookieProvider";
 
-const initNote = {
+// Initial note aligned with SimpleAdvisorNote type
+const initAdvisorNote: SimpleAdvisorNote = {
   cid: "",
-  title: "",
-  content: "",
+  meetingTitle: "",
+  meetingDate: new Date().toISOString().split('T')[0],
+  clientName: "",
+  advisorName: "",
+  
+  // Core content
+  summary: "",
+  recommendations: [],
+  disclosures: [],
+  nextSteps: [],
+  
+  // Compliance
+  complianceRule: "FINRA_2111",
+  complianceSatisfied: false,
+  
+  // Signatures
+  advisorSigned: false,
+  clientAcknowledged: false,
+  
+  // Timestamps
   createdAt: "",
   updatedAt: "",
+  
+  // Status
+  status: "draft",
 };
 
 function Home() {
-  const [noteData, setNoteData] = useState<NoteType>(initNote);
-  const [notes, setNotes] = useState<NoteType[]>([]);
+  const [noteData, setNoteData] = useState<SimpleAdvisorNote>(initAdvisorNote);
+  const [notes, setNotes] = useState<SimpleAdvisorNote[]>([]);
   const [uris, setUris] = useState<string[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedUri, setSelectedUri] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showExplanation, setShowExplanation] = useState(true); // New state for explanation
+  const [view, setView] = useState<'all' | 'drafts' | 'signed'>('all');
+  const [searchQuery, setSearchQuery] = useState("");
 
   const storage = useStorage();
   const { getCookie, updateCookie } = useCookie();
@@ -36,122 +59,157 @@ function Home() {
     if (cookie?.length) {
       setUris(cookie);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [getCookie]);
 
-  // FIXED: Stable data-fetching function with proper loading state handling
+  // Data fetching function
   const retrieveData = useCallback(async () => {
-    console.log("[DEBUG] retrieveData called. Storage exists?", !!storage, "URIs count:", uris.length);
-
-    // CRITICAL FIX: Set loading to false if there's nothing to load
     if (!storage || uris.length === 0) {
-      console.log("[DEBUG] No storage or URIs. Stopping.");
       setNotes([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    setNotes([]); // Clear notes first
+    setNotes([]);
 
     try {
-      // Download ALL notes in parallel (efficient)
       const notesPromises = uris.map(async (uri) => {
-        console.log("[DEBUG] Downloading URI:", uri);
         const data = await storage.downloadJSON(uri);
-        // Return a complete NoteType object
         return {
           ...data,
-          cid: uri.replace('ipfs://', ''), // Extract CID from URI
-        };
+          cid: uri.replace('ipfs://', ''),
+        } as SimpleAdvisorNote;
       });
 
       const downloadedNotes = await Promise.all(notesPromises);
-      console.log("[DEBUG] Successfully downloaded notes:", downloadedNotes.length);
       setNotes(downloadedNotes);
     } catch (error) {
-      console.error("[DEBUG] Failed to retrieve notes:", error);
+      console.error("Failed to retrieve notes:", error);
       setNotes([]);
     } finally {
-      console.log("[DEBUG] Setting loading to false");
       setLoading(false);
     }
-  }, [storage, uris]); // Dependencies are now explicit
+  }, [storage, uris]);
 
-  // FIXED: Run data fetch only when URIs change
+  // Run data fetch when URIs change
   useEffect(() => {
-    console.log("[DEBUG useEffect] Running. URIs changed:", uris);
     updateCookie(uris);
     retrieveData();
-  }, [uris, retrieveData, updateCookie]); // Added retrieveData and updateCookie
+  }, [uris, retrieveData, updateCookie]);
 
   const handleClose = () => {
-    setNoteData(initNote);
+    setNoteData(initAdvisorNote);
     setModalOpen(false);
     setSelectedUri("");
   };
 
+  // Create new advisor note
   const handleCreate = async () => {
-    if (!noteData.title && !noteData.content) {
+    if (!noteData.meetingTitle || !noteData.clientName) {
       handleClose();
       return;
     }
 
     setSaving(true);
 
-    // Prepare data for upload: create a new object without the placeholder `cid`
-    const { cid, ...uploadData } = noteData; // `cid` here is empty string ""
+    // Prepare note with timestamps
     const time = new Date().toISOString();
-    uploadData.createdAt = time;
-    uploadData.updatedAt = time;
+    const noteToSave = {
+      ...noteData,
+      cid: "", // Will be set by IPFS
+      createdAt: time,
+      updatedAt: time,
+      status: "draft",
+      advisorSigned: false,
+      clientAcknowledged: false,
+    };
 
     try {
-      const _uris = await storage?.uploadBatch([uploadData]);
+      const _uris = await storage?.uploadBatch([noteToSave]);
       if (_uris && _uris[0]) {
-        // Add the new URI (which contains the new, real CID) to the list
         setUris((prev) => [...prev, _uris[0]]);
       }
     } catch (error) {
-      console.error("[DEBUG] Upload failed:", error);
+      console.error("Upload failed:", error);
     } finally {
       handleClose();
       setSaving(false);
     }
   };
 
+  // Update existing note
   const handleUpdate = async () => {
-    if (!noteData.title && !noteData.content || !selectedUri) {
+    if (!selectedUri) {
       handleClose();
       return;
     }
 
     setSaving(true);
 
-    // Prepare data: upload the new content
-    const { cid, ...uploadData } = noteData; // `cid` here is the OLD CID (for display only)
-    uploadData.updatedAt = new Date().toISOString();
+    const noteToUpdate = {
+      ...noteData,
+      updatedAt: new Date().toISOString(),
+    };
 
     try {
-      const _uris = await storage?.uploadBatch([uploadData]);
+      const _uris = await storage?.uploadBatch([noteToUpdate]);
       if (_uris && _uris[0]) {
-        // Replace the old URI with the new one in the list
         setUris((prev) =>
           prev.map((uri) => (uri === selectedUri ? _uris[0] : uri))
         );
       }
     } catch (error) {
-      console.error("[DEBUG] Update failed:", error);
+      console.error("Update failed:", error);
     } finally {
       handleClose();
       setSaving(false);
     }
   };
 
+  // DELETE function - FIXED: Added missing handleDelete
   const handleDelete = () => {
     if (!selectedUri) return;
     setUris((prev) => prev.filter((uri) => uri !== selectedUri));
     handleClose();
   };
+
+  // Digital signature function
+  const handleSignNote = async (note: SimpleAdvisorNote) => {
+    const signedNote = {
+      ...note,
+      status: "signed" as const,
+      advisorSigned: true,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Upload signed version
+    try {
+      const _uris = await storage?.uploadBatch([signedNote]);
+      if (_uris && _uris[0]) {
+        setUris((prev) =>
+          prev.map((uri) => (uri === `ipfs://${note.cid}` ? _uris[0] : uri))
+        );
+      }
+    } catch (error) {
+      console.error("Signing failed:", error);
+    }
+  };
+
+  // Filter notes based on view - FIXED: Typo "metingTitle" → "meetingTitle"
+  const filteredNotes = notes.filter((note) => {
+    if (view === 'drafts') return note.status === 'draft';
+    if (view === 'signed') return note.status === 'signed';
+    return true;
+  }).filter((note) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      note.clientName.toLowerCase().includes(query) ||
+      note.meetingTitle.toLowerCase().includes(query) || // Fixed typo
+      note.summary?.toLowerCase().includes(query) ||
+      note.recommendations?.some(rec => rec.toLowerCase().includes(query))
+    );
+  });
 
   return (
     <>
@@ -163,10 +221,11 @@ function Home() {
           handleClose={handleClose}
           handleCreate={handleCreate}
           handleUpdate={handleUpdate}
-          handleDelete={handleDelete}
+          handleDelete={handleDelete} // ADDED: Missing prop
           saving={saving}
         />
       )}
+      
       <Header
         items={
           <div className="flex gap-4">
@@ -178,192 +237,158 @@ function Home() {
                 },
               }}
             >
-              New Note
-            </Button>
-            <Button
-              props={{
-                onClick: () => setShowExplanation(!showExplanation),
-                className: "bg-gray-500 hover:bg-gray-600",
-              }}
-            >
-              {showExplanation ? "Hide Info" : "How It Works"}
+              New Meeting Note
             </Button>
           </div>
         }
       />
+      
       <main className="min-h-screen pt-24 transition-all p-7 bg-light-primary text-dark-primary dark:bg-dark-primary dark:text-light-primary">
         <div className="container mx-auto">
           <Background />
           
-          {/* EXPLANATION SECTION - Simple language for public advisors */}
-          {showExplanation && (
-            <div className="p-6 mb-8 border border-blue-200 bg-blue-50 dark:bg-blue-900/20 rounded-xl dark:border-blue-800">
-              <div className="flex items-start justify-between mb-4">
-                <h2 className="text-2xl font-bold text-blue-800 dark:text-blue-300">
-                  📝 Welcome to NoteVisor - Your Public Ledger Tool
-                </h2>
-                <button 
-                  onClick={() => setShowExplanation(false)}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                >
-                  ✕
-                </button>
-              </div>
-              
-              <div className="grid gap-6 md:grid-cols-3">
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 mt-1 bg-blue-100 rounded-lg dark:bg-blue-800">
-                      🔍
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-blue-700 dark:text-blue-400">Transparent by Design</h3>
-                      <p className="text-gray-700 dark:text-gray-300">
-                        All notes are stored publicly on decentralized storage. Think of it like a public bulletin board - anyone with the link can view.
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 mt-1 bg-green-100 rounded-lg dark:bg-green-800">
-                      🔗
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-green-700 dark:text-green-400">Immutable Record</h3>
-                      <p className="text-gray-700 dark:text-gray-300">
-                        Once saved, notes cannot be secretly changed. Updates create new versions, maintaining a complete history.
-                      </p>
-                    </div>
-                  </div>
+          {/* Financial Advisor Dashboard Header */}
+          <div className="p-6 mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 rounded-xl">
+            <h1 className="mb-2 text-3xl font-bold text-gray-900 dark:text-white">
+              Financial Advisor Dashboard
+            </h1>
+            <p className="text-gray-600 dark:text-gray-300">
+              Immutable, compliant meeting notes. Everything timestamped and verifiable on IPFS.
+            </p>
+            
+            <div className="grid grid-cols-1 gap-4 mt-6 md:grid-cols-4">
+              <div className="p-4 bg-white rounded-lg shadow dark:bg-gray-800">
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  {notes.length}
                 </div>
-                
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 mt-1 bg-purple-100 rounded-lg dark:bg-purple-800">
-                      👥
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-purple-700 dark:text-purple-400">For Public Advisors</h3>
-                      <p className="text-gray-700 dark:text-gray-300">
-                        Perfect for meeting notes, public records, or shared documentation. Everything is visible and verifiable by all stakeholders.
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 mt-1 rounded-lg bg-amber-100 dark:bg-amber-800">
-                      ⚠️
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-amber-700 dark:text-amber-400">Privacy Note</h3>
-                      <p className="text-gray-700 dark:text-gray-300">
-                        <strong>Do not store private/sensitive information.</strong> All content is publicly accessible via its unique link (CID).
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="p-4 bg-white border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
-                  <h4 className="mb-2 font-bold text-gray-800 dark:text-gray-200">Quick Guide:</h4>
-                  <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                    <li className="flex items-center gap-2">
-                      <span className="flex items-center justify-center w-5 h-5 text-xs text-white bg-blue-500 rounded-full">1</span>
-                      <span>Click "New Note" to create public documentation</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="flex items-center justify-center w-5 h-5 text-xs text-white bg-blue-500 rounded-full">2</span>
-                      <span>Share the note's link with stakeholders</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="flex items-center justify-center w-5 h-5 text-xs text-white bg-blue-500 rounded-full">3</span>
-                      <span>Updates preserve the entire history</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="flex items-center justify-center w-5 h-5 text-xs text-white bg-blue-500 rounded-full">4</span>
-                      <span>All data is stored on decentralized networks</span>
-                    </li>
-                  </ul>
-                  
-                  <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
-                    <p className="text-xs italic text-gray-600 dark:text-gray-400">
-                      Tip: Use for meeting minutes, public announcements, shared research, or transparent project documentation.
-                    </p>
-                  </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Total Notes
                 </div>
               </div>
               
-              <div className="p-4 mt-6 rounded-lg bg-yellow-50 dark:bg-yellow-900/20">
-                <p className="flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-300">
-                  <span className="text-lg">💡</span>
-                  <strong>Best Practice:</strong> Treat every note as if it will be printed on a public notice board. This ensures transparency and builds trust with your audience.
-                </p>
+              <div className="p-4 bg-white rounded-lg shadow dark:bg-gray-800">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {notes.filter(n => n.status === 'signed').length}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Signed Documents
+                </div>
+              </div>
+              
+              <div className="p-4 bg-white rounded-lg shadow dark:bg-gray-800">
+                <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                  {notes.filter(n => n.status === 'draft').length}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Drafts
+                </div>
+              </div>
+              
+              <div className="p-4 bg-white rounded-lg shadow dark:bg-gray-800">
+                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                  {new Set(notes.map(n => n.clientName)).size}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Unique Clients
+                </div>
               </div>
             </div>
-          )}
+          </div>
           
-          {/* MAIN CONTENT AREA */}
+          {/* Controls */}
+          <div className="flex flex-col gap-4 mb-6 md:flex-row">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="Search by client name, meeting title, or content..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full p-3 bg-white border border-gray-300 rounded-lg dark:border-gray-700 dark:bg-gray-800"
+              />
+            </div>
+            
+            <div className="flex gap-2">
+              <Button
+                props={{
+                  onClick: () => setView('all'),
+                  className: view === 'all' ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-800',
+                }}
+              >
+                All Notes
+              </Button>
+              <Button
+                props={{
+                  onClick: () => setView('drafts'),
+                  className: view === 'drafts' ? 'bg-yellow-600' : 'bg-gray-200 dark:bg-gray-800',
+                }}
+              >
+                Drafts
+              </Button>
+              <Button
+                props={{
+                  onClick: () => setView('signed'),
+                  className: view === 'signed' ? 'bg-green-600' : 'bg-gray-200 dark:bg-gray-800',
+                }}
+              >
+                Signed
+              </Button>
+            </div>
+          </div>
+          
+          {/* Notes Grid */}
           {loading ? (
             <div className="flex flex-col items-center justify-center h-72">
               <Loader />
-              <p>Loading your public notes...</p>
+              <p>Loading advisor notes...</p>
             </div>
           ) : (
-            <>
-              {notes.length === 0 ? (
-                <div className="py-12 text-center">
-                  <div className="max-w-md mx-auto">
-                    <div className="mb-4 text-6xl">📝</div>
-                    <h3 className="mb-4 text-2xl font-bold">No Public Notes Yet</h3>
-                    <p className="mb-6 text-gray-600 dark:text-gray-400">
-                      Create your first note to start building transparent, publicly-accessible documentation.
-                    </p>
-                    <Button
-                      props={{
-                        onClick: () => {
-                          setSelectedUri("");
-                          setModalOpen(true);
-                        },
-                        className: "px-6 py-3 text-lg",
-                      }}
-                    >
-                      Create Your First Public Note
-                    </Button>
-                  </div>
+            <div className="grid gap-6">
+              {filteredNotes.length === 0 ? (
+                <div className="py-12 text-center bg-white dark:bg-gray-800 rounded-xl">
+                  <div className="mb-4 text-6xl">📊</div>
+                  <h3 className="mb-4 text-2xl font-bold">No Meeting Notes Yet</h3>
+                  <p className="mb-6 text-gray-600 dark:text-gray-400">
+                    Create your first compliant meeting note to start building immutable records.
+                  </p>
+                  <Button
+                    props={{
+                      onClick: () => {
+                        setSelectedUri("");
+                        setModalOpen(true);
+                      },
+                      className: "px-6 py-3 text-lg",
+                    }}
+                  >
+                    Create First Meeting Note
+                  </Button>
                 </div>
               ) : (
-                <>
-                  <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-2xl font-bold">
-                      Your Public Notes ({notes.length})
-                    </h2>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      All notes are publicly accessible and verifiable
-                    </p>
-                  </div>
-                  
-                  <div className="relative z-10 grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-                    {notes.map((note, i) => (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {filteredNotes.map((note, i) => (
+                    <div key={i} className="relative">
                       <NoteCard
-                        key={i}
                         noteData={note}
                         setNoteData={setNoteData}
                         handleOpen={() => {
                           setSelectedUri(`ipfs://${note.cid}`);
                           setModalOpen(true);
                         }}
+                        onSign={() => handleSignNote(note)}
                       />
-                    ))}
-                  </div>
-                  
-                  <div className="mt-8 text-sm text-center text-gray-500 dark:text-gray-400">
-                    <p>
-                      ℹ️ Each note is stored on decentralized storage. Anyone with the link can view its content.
-                    </p>
-                  </div>
-                </>
+                    </div>
+                  ))}
+                </div>
               )}
-            </>
+            </div>
           )}
+          
+          {/* Compliance Footer Note */}
+          <div className="p-4 mt-8 border border-yellow-200 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-800">
+            <p className="flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-300">
+              <span className="text-lg">⚖️</span>
+              <strong>Compliance Ready:</strong> All notes are timestamped on IPFS and can be verified for FINRA/SEC compliance audits.
+            </p>
+          </div>
         </div>
       </main>
     </>

@@ -1,120 +1,175 @@
 import { Dispatch, SetStateAction, useState } from "react";
-import NoteType from "../types/NoteType";
+import SimpleAdvisorNote from "../types/SimpleAdvisorNote";
 
-// Define the NoteProps type at the top
 type NoteProps = {
-  noteData: NoteType;
-  setNoteData: Dispatch<SetStateAction<NoteType>>;
+  noteData: SimpleAdvisorNote;
+  setNoteData: Dispatch<SetStateAction<SimpleAdvisorNote>>;
   handleOpen: () => void;
+  onSign: () => void;
 };
 
-function NoteCard({ noteData, setNoteData, handleOpen }: NoteProps) {
+function NoteCard({ noteData, setNoteData, handleOpen, onSign }: NoteProps) {
   const [copied, setCopied] = useState(false);
   
-  // Create the shareable link
   const ipfsLink = `https://ipfs.io/ipfs/${noteData.cid}`;
-  // Shortened version for display
   const shortCid = noteData.cid.substring(0, 8) + '...' + noteData.cid.substring(noteData.cid.length - 4);
 
   const handleShare = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent opening the note
-    
-    // Try to use Web Share API first (mobile/desktop)
-    if (navigator.share) {
-      navigator.share({
-        title: noteData.title || 'Shared Note',
-        text: noteData.content?.substring(0, 100) || 'Check out this note',
-        url: ipfsLink,
+    e.stopPropagation();
+    navigator.clipboard.writeText(ipfsLink)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
       });
-    } else {
-      // Copy to clipboard
-      navigator.clipboard.writeText(ipfsLink)
-        .then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        })
-        .catch(err => {
-          console.error('Failed to copy: ', err);
-          // Fallback for older browsers
-          const textArea = document.createElement('textarea');
-          textArea.value = ipfsLink;
-          document.body.appendChild(textArea);
-          textArea.select();
-          document.execCommand('copy');
-          document.body.removeChild(textArea);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        });
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'draft': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
+      case 'signed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300';
     }
   };
 
-  // Format dates
-  const createdDate = new Date(noteData.createdAt);
-  const updatedDate = new Date(noteData.updatedAt);
-  const wasUpdated = createdDate.getTime() !== updatedDate.getTime();
+  const getComplianceRuleText = (rule: string) => {
+    switch (rule) {
+      case 'FINRA_2111': return 'FINRA 2111';
+      case 'SEC_REG_BI': return 'SEC Reg BI';
+      case 'FIDUCIARY': return 'Fiduciary';
+      case 'KYC': return 'KYC';
+      case 'AML': return 'AML';
+      default: return 'Compliance';
+    }
+  };
 
   return (
-    <div className="relative group">
-      <button
-        className="w-full px-5 py-3 text-left transition-all rounded-md shadow-md outline-none cursor-pointer bg-light-notebg text-dark-primary dark:bg-dark-notebg dark:text-light-primary hover:-translate-y-1 hover:shadow-lg focus:-translate-y-1 focus:shadow-lg"
+    <div className="overflow-hidden transition-shadow bg-white border border-gray-200 shadow-lg dark:bg-gray-800 rounded-xl hover:shadow-xl dark:border-gray-700">
+      {/* Header with status */}
+      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-start justify-between">
+          <div>
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(noteData.status)}`}>
+              {noteData.status.toUpperCase()}
+            </span>
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {new Date(noteData.meetingDate).toLocaleDateString()}
+          </div>
+        </div>
+      </div>
+      
+      {/* Main content */}
+      <div 
+        className="p-6 cursor-pointer"
         onClick={() => {
           setNoteData(noteData);
           handleOpen();
         }}
       >
-        <h1 className="mb-2 text-3xl">{noteData.title || <>&nbsp;</>}</h1>
-        <p className="mb-4 text-gray-700 dark:text-gray-300 line-clamp-3">
-          {noteData.content || <>&nbsp;</>}
-        </p>
+        <h3 className="mb-2 text-xl font-bold text-gray-900 dark:text-white">
+          {noteData.meetingTitle}
+        </h3>
         
-        {/* PERMANENT SHARE LINK SECTION - ALWAYS VISIBLE */}
-        <div className="p-2 mb-3 bg-gray-100 border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-blue-600 dark:text-blue-400">🔗</span>
-              <span className="font-mono text-xs text-gray-700 truncate dark:text-gray-300">
-                {shortCid}
-              </span>
-            </div>
-            <button
-              onClick={handleShare}
-              className="flex items-center gap-1 px-2 py-1 text-xs text-blue-700 transition-colors bg-blue-100 rounded hover:bg-blue-200 dark:bg-blue-900 dark:hover:bg-blue-800 dark:text-blue-300"
-              title="Copy public link"
-            >
-              {copied ? (
-                <>
-                  <span className="text-green-600">✓</span>
-                  <span>Copied</span>
-                </>
-              ) : (
-                <>
-                  <span>Copy</span>
-                </>
-              )}
-            </button>
-          </div>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-            Permanent public link • Anyone can view
+        <div className="mb-4">
+          <p className="mb-1 text-sm text-gray-600 dark:text-gray-400">
+            Client: <span className="font-medium text-gray-900 dark:text-white">{noteData.clientName}</span>
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Advisor: <span className="font-medium text-gray-900 dark:text-white">{noteData.advisorName || "Not assigned"}</span>
           </p>
         </div>
         
-        {/* Timestamps */}
-        <div className="pt-2 border-t border-gray-300 dark:border-gray-700">
-          <div className="flex flex-col gap-1 text-xs text-gray-500 dark:text-gray-400">
-            <div className="flex items-center gap-1">
-              <span className="text-[10px]">📅</span>
-              <span>Created: {createdDate.toLocaleDateString()}</span>
-            </div>
+        {/* Quick summary */}
+        <p className="mb-4 text-gray-700 dark:text-gray-300 line-clamp-2">
+          {noteData.summary || "Meeting notes..."}
+        </p>
+        
+        {/* Compliance indicator */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">COMPLIANCE</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span 
+              className={`px-2 py-1 rounded text-xs ${
+                noteData.complianceSatisfied 
+                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' 
+                  : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+              }`}
+            >
+              {getComplianceRuleText(noteData.complianceRule)}
+              {noteData.complianceSatisfied ? ' ✓' : ' ⚠️'}
+            </span>
             
-            {wasUpdated && (
-              <div className="flex items-center gap-1">
-                <span className="text-[10px]">✏️</span>
-                <span>Updated: {updatedDate.toLocaleDateString()}</span>
-              </div>
+            {/* Signature status */}
+            {noteData.advisorSigned && (
+              <span className="px-2 py-1 text-xs text-blue-800 bg-blue-100 rounded dark:bg-blue-900 dark:text-blue-300">
+                Advisor Signed
+              </span>
+            )}
+            {noteData.clientAcknowledged && (
+              <span className="px-2 py-1 text-xs text-purple-800 bg-purple-100 rounded dark:bg-purple-900 dark:text-purple-300">
+                Client Ack
+              </span>
             )}
           </div>
         </div>
-      </button>
+        
+        {/* Recommendations count */}
+        {noteData.recommendations && noteData.recommendations.length > 0 && (
+          <div className="text-xs text-gray-600 dark:text-gray-400">
+            {noteData.recommendations.length} recommendation(s)
+          </div>
+        )}
+      </div>
+      
+      {/* Footer with actions */}
+      <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 dark:bg-gray-900 dark:border-gray-700">
+        <div className="flex items-center justify-between">
+          {/* IPFS link */}
+          <button
+            onClick={handleShare}
+            className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            title="Copy IPFS link"
+          >
+            <span>🔗</span>
+            <span className="font-mono text-xs">{shortCid}</span>
+          </button>
+          
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            {noteData.status === 'draft' && !noteData.advisorSigned && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSign();
+                }}
+                className="px-3 py-1 text-sm text-white transition-colors bg-green-600 rounded-lg hover:bg-green-700"
+              >
+                Sign Note
+              </button>
+            )}
+            
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setNoteData(noteData);
+                handleOpen();
+              }}
+              className="px-3 py-1 text-sm text-white transition-colors bg-blue-600 rounded-lg hover:bg-blue-700"
+            >
+              View
+            </button>
+          </div>
+        </div>
+        
+        {/* Copy feedback */}
+        {copied && (
+          <div className="mt-2 text-xs text-green-600 dark:text-green-400">
+            ✓ IPFS link copied to clipboard
+          </div>
+        )}
+      </div>
     </div>
   );
 }
