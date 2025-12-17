@@ -21,7 +21,7 @@ export function useThemeUpdate() {
 }
 
 function ThemeProvider({ children }: PropsType) {
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(false);
 
   useEffect(() => {
     if (matchMedia("(prefers-color-scheme: dark)").matches) setDark(true);
